@@ -1,0 +1,83 @@
+when HTTP_REQUEST {
+
+# Take the ip address for ip reputation/intelligence check from the XFF header if it comes from the whitelisted source ip addresses in data group "client_ip_class"
+
+if { [HTTP::header exists "X-Forwarded-For"] && [class match [IP::client_addr] equals "/Common/client_ip_class"] } {
+    set trueIP [HTTP::header "X-Forwarded-For"]
+} else {
+    set trueIP [IP::client_addr]
+}
+
+# Check if IP reputation is triggered and it is containing "Spam Sources"
+
+  if { ([llength [IP::reputation $trueIP]] != 0) && ([IP::reputation $trueIP] contains "Spam Sources") }{ 
+    
+    
+       log local0. "The category is [IP::reputation $trueIP] from [IP::client_addr]"
+
+
+# Set the variable 1 or bulean true as to trigger ASM captcha or bot defense javascript
+       
+       set js_ch 1
+       
+    
+} else {
+    
+    set js_ch 0
+    
+}
+
+
+#  Custom response page just for testing if there is no real backend origin server for testing
+
+    if {!$js_ch} {
+    
+       HTTP::respond 200 content {
+      <html>
+         <head>
+            <title>Apology Page</title>
+         </head>
+         <body>
+            We are sorry, but the site you are looking for is temporarily out of service<br>
+            If you feel you have reached this page in error, please try again.
+         </body>
+      </html>
+      
+       }
+       
+    }
+
+}
+
+
+#  when BOTDEFENSE_ACTION {
+
+    # Trigger bot defense action javascript check for Spam Sources
+    
+  #    if {$js_ch}{
+    
+
+#        BOTDEFENSE::action browser_challenge
+          
+  #    } 
+    
+#  }
+
+
+
+when ASM_REQUEST_DONE {
+
+
+
+# Trigger ASM captcha check only for users comming from Spam sources that have not already passed the captcha check (don't have the captcha cookie)
+
+    if {$js_ch && [ASM::captcha_status] ne "correct"} {
+    
+       set res [ASM::captcha]
+       
+           if {$res ne "ok"} {
+                log local0. "Cannot send captcha_challenge: \"$res\""
+           }
+
+    }
+}
